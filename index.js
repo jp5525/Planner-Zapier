@@ -1,8 +1,10 @@
+const ConversationResource = require('./resources/conversation');
 const UserResource = require('./resources/user');
 const GroupResource = require('./resources/group');
 const PlanResource = require('./resources/plan');
 const BucketResource = require('./resources/bucket');
 const TaskResource = require('./resources/task');
+const updateTask = require('./updateTask.js');
 // We can roll up all our behaviors in an App.
 const authentication = require('./authentication');
 const addBearerHeader = (request, z, bundle) => {
@@ -11,6 +13,8 @@ const addBearerHeader = (request, z, bundle) => {
   }
   return request;
 };
+
+
 
 const App = {
   // This is just shorthand to reference the installed dependencies you have. Zapier will
@@ -29,6 +33,7 @@ const App = {
 
   // If you want to define optional resources to simplify creation of triggers, searches, creates - do that here!
   resources: {
+    [ConversationResource.key]: ConversationResource,
     [UserResource.key]: UserResource,
     [GroupResource.key]: GroupResource,
     [PlanResource.key]: PlanResource,
@@ -46,6 +51,7 @@ const App = {
 
   // If you want your creates to show up, you better include it here!
   creates: {
+    [updateTask.key]: updateTask
   }
 };
 
