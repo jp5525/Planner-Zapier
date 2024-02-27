@@ -1,24 +1,18 @@
 {
-  "name": "zapier-platform-example-app-minimal",
-  "version": "1.0.0",
-  "description": "An example app for the Zapier platform.",
-  "repository": "zapier/zapier-platform-example-app-minimal",
+  "name": "zapier-for-planner",
+  "version": "1.1.0",
+  "description": "An integration between Zapier and Planner",
   "homepage": "https://zapier.com/",
-  "author": "Bryan Helmig <bryan@zapier.com>",
+  "author": "Jared Piro",
   "license": "BSD-3-Clause",
   "main": "index.js",
   "scripts": {
-    "test": "node node_modules/mocha/bin/mocha --recursive"
-  },
-  "engines": {
-    "node": "6.10.2",
-    "npm": ">=3.10.10"
+    "test": "jest"
   },
   "dependencies": {
-    "zapier-platform-core": "4.0.0"
+    "zapier-platform-core": "15.5.3"
   },
   "devDependencies": {
-    "mocha": "3.2.0",
-    "should": "11.2.1"
+    "jest": "29.7.0"
   }
 }

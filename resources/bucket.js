@@ -1,25 +1,36 @@
+const {requestWithAccessToken} = require('../util/withAccessToken');
+const { findPlan } = require("../util/findPlan")
+const { findGroup } = require("../util/findGroup")
+
 // get a list of buckets
-const listBuckets = (z, bundle) => {
-  const responsePromise = z.request({
-    url: `https://graph.microsoft.com/v1.0/planner/plans/${bundle.inputData.Plan}/buckets/` });
-  return responsePromise
-    .then(response => JSON.parse(response.content).value);
-};
+const listBuckets = (z, bundle) => 
+  requestWithAccessToken(
+    {url: `https://graph.microsoft.com/v1.0/planner/plans/${bundle.inputData.Plan}/buckets/` },
+    z,
+    bundle
+  )
+  .then(response => JSON.parse(response.content).value);
 
 // create a bucket
-const createBucket = (z, bundle) => {
-  const responsePromise = z.request({
-    method: 'POST',
-    url: 'https://graph.microsoft.com/v1.0/planner/buckets',
-    body: {
-      name: bundle.inputData.name, 
-      planId: bundle.inputData.Plan
-    }
-  });
-  return responsePromise
-    .then(response => JSON.parse(response.content));
-};
+const createBucket = async (z, bundle) => {
+  const {
+    inputData:{ Group, Plan, name}
+  } = bundle;
+  const {id: groupId }= await findGroup(z, bundle, Group);
+  const {id: planId} =  await findPlan(z, bundle, Plan, groupId);
 
+  return requestWithAccessToken(
+    {
+      method: 'POST',
+      url: 'https://graph.microsoft.com/v1.0/planner/buckets',
+      body: { name,  planId } 
+    },
+    z,
+    bundle
+  )
+  .then(response => JSON.parse(response.content));
+
+}
 module.exports = {
   key: 'bucket',
   noun: 'Bucket',

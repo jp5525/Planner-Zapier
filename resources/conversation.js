@@ -1,76 +1,63 @@
+const {requestWithAccessToken} = require('../util/withAccessToken');
+const { findGroup } = require("../util/findGroup")
+const { findTask } = require("../util/findTask")
 // create a comment
-const createConversation = (z, bundle) => {
-  let conversationThreadId, eTag, title;
+const createConversation = async (z, bundle) => {
   //get the task to comment on
-  const responsePromise = z.request({
-    method: 'GET',
-    url: `https://graph.microsoft.com/v1.0/planner/tasks/${bundle.inputData.Task}`,
-  })
-  .then(response => z.JSON.parse(response.content))
-  //add comment to task
-  .then(json => {
-    conversationThreadId = json.conversationThreadId;
-    eTag = json["@odata.etag"];
-    title = json.title;
-    if(conversationThreadId){   //in the case that there is already conversation thread on the task
-      return z.request({
+  const { inputData:{ Task, Group, Content}} = bundle;
+
+  const { id: groupId} = await findGroup(z, bundle, Group);
+  const task = await findTask(z, {...bundle, groupId}, Task);
+  const {conversationThreadId, title} = task
+  const eTag = task["@odata.etag"];
+  
+  if(conversationThreadId){   //in the case that there is already conversation thread on the task
+      return await requestWithAccessToken({
         method: 'POST',
-        url: `https://graph.microsoft.com/v1.0/groups/${bundle.inputData.Group}/threads/${conversationThreadId}/reply`,
+        url: `https://graph.microsoft.com/v1.0/groups/${groupId}/threads/${conversationThreadId}/reply`,
         body:{
           post:{
             body:{
-              content: bundle.inputData.Content,
+              content: Content,
               contentType: "text"
             }
           }
         }
-      })
-    }
-    else{   //if there is not already a conversation thread then create one and add a comment
-      return z.request({
-        method: 'POST',
-        url: `https://graph.microsoft.com/v1.0/groups/${bundle.inputData.Group}/conversations`,
-        body:{
-          topic: `Comments on task "${title}"`,
-          threads:[
-            {
-              posts:[
-                {
-                  body:{
-                    content: bundle.inputData.Content,
-                    contentType: "text"
-                  }
+      }, z, bundle)
+  }
+  else{   //if there is not already a conversation thread then create one and add a comment
+    const conversationRaw = await requestWithAccessToken({
+      method: 'POST',
+      url: `https://graph.microsoft.com/v1.0/groups/${groupId}/conversations`,
+      body:{
+        topic: `Comments on task "${title}"`,
+        threads:[
+          {
+            posts:[
+              {
+                body:{
+                  content: Content,
+                  contentType: "text"
                 }
-              ]
-            }
-          ]
-        }
-      })
-      .then(response => z.JSON.parse(response.content))
-      .then(json =>{
-        const {threads} = json;
-        const [{id}] = threads;
-        conversationThreadId = id;
-        z.console.log({id, threads});
-        return z.request({
-          method: 'PATCH',
-          url: `https://graph.microsoft.com/v1.0/planner/tasks/${bundle.inputData.Task}`,
-          body:{
-            "conversationThreadId": id
-          },
-          headers:{"If-Match": eTag}
-        })
+              }
+            ]
+          }
+        ]
+      }
+    }, z, bundle)
+    const {threads: [conversationThreadId]} = z.JSON.parse(conversationRaw.content)   
+    await requestWithAccessToken({
+      method: 'PATCH',
+      url: `https://graph.microsoft.com/v1.0/planner/tasks/${taskId}`,
+      body:{ conversationThreadId },
+      headers:{"If-Match": eTag}
+    }, z, bundle)
 
-      })
-    }
-  })
-  .then(res =>{ 
-    if(res.status >= 200 && res.status < 300)
+    if(conversationRaw.status >= 200 && conversationRaw.status < 300){
       return {success: true, conversationThreadId}
-  })
- 
-  
-  return responsePromise
+    }
+    
+  }
 };
 
 module.exports = {
