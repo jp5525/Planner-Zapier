@@ -1,27 +1,38 @@
-const updateTask = (z, bundle) =>{
-    return updateTaskFields(z, bundle)
-    .then(task=>{
-      return updateDetails(z, bundle)
-      .then(details=>({...task, details}))
-    })
+const { findTask } = require('./util/findTask');
+const { findGroup } = require('./util/findGroup');
+const { findPlan } = require('./util/findPlan');
+const {requestWithAccessToken} = require('./util/withAccessToken');
+
+const updateTask = async (z, bundle) =>{
+  const {Group, Plan, Task} = bundle.inputData;
+  const {id: groupId} = await findGroup(z, bundle, Group);
+  const {id: planId} = await findPlan(z, bundle, Plan, groupId);
+  const {id: taskId} = await findTask(z, {...bundle, groupId, planId}, Task)
+
+  const task = await updateTaskFields(z, {...bundle, groupId, planId, taskId});
+  const details = await updateDetails(z, {...bundle, groupId, planId, taskId})
   
-  }
+  return {...task, details}
+
+}
   
-  const updateTaskFields = (z, bundle) =>{
-    const { Task, Task_Etag, DueDateTime: dueDateTime, PercentComplete:percentComplete, StartDateTime:startDateTime, Title:title} = bundle.inputData
+  const updateTaskFields = async (z, bundle) =>{
+    const { Task_Etag, DueDateTime: dueDateTime, PercentComplete:percentComplete, StartDateTime:startDateTime, Title:title} = bundle.inputData;
+    const { taskId } = bundle
     const body={
       ...(dueDateTime && {dueDateTime}),
       ...(startDateTime && {startDateTime}),
       ...(percentComplete && {percentComplete}),
       ...(title && {title}),
     }
+
     if(Object.keys(body).length > 0){
-      return z.request({
+      return requestWithAccessToken({
         method: "PATCH",
-        url:`https://graph.microsoft.com/v1.0//planner/tasks/${Task}`,
+        url:`https://graph.microsoft.com/v1.0//planner/tasks/${taskId}`,
         headers:{"If-Match": Task_Etag},
         body
-      })
+      }, z, bundle)
       .catch(response=>new Promise((res, rej)=>res({fieldsMessage: "did not update fields"})))
     }
     else{
@@ -31,13 +42,14 @@ const updateTask = (z, bundle) =>{
   
   const updateDetails = (z, bundle) => {
     const { Task, Task_Details_Etag:Etag, Description:description} = bundle.inputData
+    const { taskId } = bundle
     if(description){
-      return z.request({
+      return requestWithAccessToken({
         method: "PATCH",
-        url:`https://graph.microsoft.com/v1.0//planner/tasks/${Task}/details`,
+        url:`https://graph.microsoft.com/v1.0//planner/tasks/${taskId}/details`,
         headers:{"If-Match": Etag},
         body:{description}
-      })
+      }, z, bundle)
       .catch(response =>new Promise((res, rej)=>res({detailsMessage: "did not update details"})))
     }
     else{

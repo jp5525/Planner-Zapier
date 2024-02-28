@@ -1,14 +1,9 @@
+const {requestWithAccessToken} = require('../util/withAccessToken');
 
 // get a list of groups
-const listGroups = (z) => {
-  const responsePromise = z.request({
-    url: 'https://graph.microsoft.com/v1.0/groups',
-   
-  });
-  return responsePromise
+const listGroups = (z, bundle) => 
+  requestWithAccessToken({url: 'https://graph.microsoft.com/v1.0/groups'}, z, bundle)
     .then(response => {return JSON.parse(response.content).value});
-};
-
 
 module.exports = {
   key: 'group',
@@ -25,5 +20,6 @@ module.exports = {
     }
   },
 
+  
 
 };

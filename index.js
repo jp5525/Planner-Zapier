@@ -7,14 +7,6 @@ const TaskResource = require('./resources/task');
 const updateTask = require('./updateTask.js');
 // We can roll up all our behaviors in an App.
 const authentication = require('./authentication');
-const addBearerHeader = (request, z, bundle) => {
-  if (bundle.authData && bundle.authData.access_token) {
-    request.headers.Authorization = `Bearer ${bundle.authData.access_token}`;
-  }
-  return request;
-};
-
-
 
 const App = {
   // This is just shorthand to reference the installed dependencies you have. Zapier will
@@ -24,16 +16,13 @@ const App = {
 
   authentication: authentication,
   // beforeRequest & afterResponse are optional hooks into the provided HTTP client
-  beforeRequest: [
-    addBearerHeader
-  ],
-
-  afterResponse: [
-  ],
+  beforeRequest: [],
+  afterResponse: [],
 
   // If you want to define optional resources to simplify creation of triggers, searches, creates - do that here!
   resources: {
-    [ConversationResource.key]: ConversationResource,
+    //Removing because app auth does NOT support replying to threads.
+    //[ConversationResource.key]: ConversationResource,
     [UserResource.key]: UserResource,
     [GroupResource.key]: GroupResource,
     [PlanResource.key]: PlanResource,

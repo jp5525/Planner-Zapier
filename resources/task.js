@@ -1,125 +1,124 @@
+const { requestWithAccessToken } = require('../util/withAccessToken');
+const { findPlan } = require("../util/findPlan")
+const { findGroup } = require("../util/findGroup")
+const { findBucket } = require("../util/findBucket")
+const { list:{ operation:{perform: getUsers}}} = require("./user")
 
 // get a list of tasks
-const listTasks = (z, bundle) => {
-  const responsePromise = z.request({
-    url: `https://graph.microsoft.com/v1.0/planner/plans/${bundle.inputData.Plan}/tasks`
-  });
-  return responsePromise
-    .then(response => JSON.parse(response.content).value);
-};
-
+const listTasks = async(z, bundle) => {
+  
+  const {id: planId} = (await findPlan(z, bundle, bundle.inputData.Plan, bundle.groupId));
+  return requestWithAccessToken({url: `https://graph.microsoft.com/v1.0/planner/plans/${planId}/tasks`}, z, bundle)
+    .then(response => JSON.parse(response.content).value)
+}
 // create a task
-const createTask = (z, bundle) => {
-
+const createTask = async (z, bundle) => {
+  const {authData} = bundle
   let a = ''+bundle.inputData.Assignee;
   let assignees = {};
+  const users = await getUsers(z, bundle);
+
   if(bundle.inputData.Assignee != undefined)
     assignees = a.split(',').reduce((all, curr, index) =>{
-      all[curr] = {
+      const {id : userId} = users.find(({displayName, mail, id}) => [displayName, mail, id].includes(curr) )
+      all[userId] = {
         "@odata.type": "microsoft.graph.plannerAssignment",
         "orderHint": " !"+" !".repeat(index)
       }
       return all;
     }, {})
 
- 
+  
+  const {id: groupId }= await findGroup(z, bundle, bundle.inputData.Group);
+  const {id: planId} =  await findPlan(z, bundle, bundle.inputData.Plan, groupId);
+  const {id: bucketId} =  await findBucket(z, {authData, inputData:{Plan:planId}}, bundle.inputData.Bucket)
+  const body = {
+    planId,
+    bucketId,
+    title: bundle.inputData.Title,
+    startDateTime: bundle.inputData.StartDate,
+    dueDateTime: bundle.inputData.DueDate,
+    assignments: assignees
+  };
 
-  const responsePromise = z.request({
+  const responsePromise = requestWithAccessToken({
     method: 'POST',
     url: 'https://graph.microsoft.com/v1.0/planner/tasks',
-    body: {
-      planId: bundle.inputData.Plan,
-      bucketId: bundle.inputData.Bucket,
-      title: bundle.inputData.Title,
-      startDateTime: bundle.inputData.StartDate,
-      dueDateTime: bundle.inputData.DueDate,
-      assignments: assignees
-    }
-  });
+    body
+  }, z, bundle);
   
   return responsePromise
     .then(response => JSON.parse(response.content));
 };
 
-const searchTask = (z, bundle) =>{
-  let allDetails;
-  const {inputData} = bundle;
+//Needs testing
+const searchTask = async(z, bundle) =>{
+  const {inputData: {Plan, Title, Description, Group}} = bundle;
+  const {id: groupId} = await findGroup(z, bundle, Group);
+  const {id: planId} = await findPlan(z, bundle, Plan, groupId);
+  let foundTask;
   //get the tasks
-  return z.request({
-    method: "GET",
-    url:`https://graph.microsoft.com/v1.0/planner/plans/${bundle.inputData.Plan}/tasks/`
-  })
+  const tasksRaw = await requestWithAccessToken({method: "GET", url:`https://graph.microsoft.com/v1.0/planner/plans/${planId}/tasks/`}, z, bundle);
   //filter by title
-  .then(response =>{
-    if(inputData.Title){
-      return response.json.value.filter(x=>x.title.includes(inputData.Title))
-    }
-    else{
-      return response.json.value
-    }
-  })
+  const tasks = tasksRaw.json.value.filter(x=> Title? x.title.includes(Title) : true );
   // get details and filter by description
-  .then(tasks=>{
-    if(inputData.Description){
-      const tasksWithDescription = tasks.filter(x=>x.hasDescription);
-      return Promise.all(tasksWithDescription.map(x=>
-        z.request({
+  if(Description){
+    const tasksWithDescription = tasks.filter(x=>x.hasDescription);
+    const taskDetails = await Promise.all(
+      tasksWithDescription.map(x=>
+        requestWithAccessToken({
           method: "GET",
           url:`https://graph.microsoft.com/v1.0/planner/tasks/${x.id}/details`
-        }
-      )))
-      .then(res => {
-        allDetails = res.map(x=>x.json);
-        return allDetails.filter(x=>x.description.includes(inputData.Description));
-      })
-      .then(res=>{
-        if(res.length >0){
-          const details = res[0];
-          const task  = tasks.find(x=>x.id == details.id);
-          return {...task, details};
-        }
-        else if(tasks.length > 0){
-          const task = tasks[0];
-          const details = allDetails.find(x=>x.id == task.id)
-          return {...task, details};
-        }
-        else return {}
-      })
+        }, z, bundle)
+        )
+      )
+    const taskDetailsWithMatchingDescription = taskDetails.map(x=>x.json).filter(x=>x.description.includes(Description))
+    if(taskDetailsWithMatchingDescription.length >0){
+      const details = taskDetailsWithMatchingDescription[0];
+      const task  = tasks.find(x=>x.id == details.id);
+      foundTask = {...task, details};
     }
     else{
-      if(tasks.length >0){
-        const task = tasks[0];
-        return z.request({
-          method: "GET",
-          url:`https://graph.microsoft.com/v1.0/planner/tasks/${task.id}/details`
-        })
-        .then(res=>({...task, details: res.json}))
-      }
-      else return {}
+      //If we didnt find task with a matching title and description
+      return []
     }
-  })
-  //get the task conversation
-  .then(task =>{
-    return z.request({
+    
+  }
+  else{
+    if(tasks.length >0){
+      const task = tasks[0];
+      const details = await requestWithAccessToken({
+        method: "GET",
+        url:`https://graph.microsoft.com/v1.0/planner/tasks/${task.id}/details`
+      }, z, bundle)
+      .then(res=>res.json);
+
+      foundTask = {...task, details}
+    }
+    else {
+      //If we didnt find a task with a mathing Title
+      return []
+    }
+  }
+
+  //Get conversations on task
+  const conversationThreadRaw = await requestWithAccessToken({
+    method: "GET",
+    url:`https://graph.microsoft.com/v1.0/groups/${groupId}/threads/${foundTask.conversationThreadId}`
+  }, z, bundle);
+
+  if (conversationThreadRaw.json.error){
+    return [{...foundTask, groupId: inputData.Group}]
+  }
+  else{
+    const posts =  await requestWithAccessToken({
       method: "GET",
-      url:`https://graph.microsoft.com/v1.0/groups/${bundle.inputData.Group}/threads/${task.conversationThreadId}`
-    })
-    .then(response => {
-      if (response.json.error)
-        return [{...task, groupId: inputData.Group}]
-      else{
-        //get the posts on the conversation
-        return z.request({
-          method: "GET",
-          url:`https://graph.microsoft.com/v1.0/groups/${bundle.inputData.Group}/threads/${task.conversationThreadId}/posts`
-        })
-        .then(res=>{
-          const conversationThread = {...response.json, posts: res.json.value}
-          return [{...task, conversationThread, groupId:inputData.Group}]
-        })
-      }
-    })
-  })
+      url:`https://graph.microsoft.com/v1.0/groups/${groupId}/threads/${foundTask.conversationThreadId}/posts`
+    }, z, bundle)
+
+    const conversationThread = {...conversationThreadRaw.json, posts: posts.json.value};
+    return [{...foundTask, conversationThread, groupId }]
+  }
   
 }
 
@@ -137,8 +136,8 @@ module.exports = {
       inputFields: [
         {key: 'Group', required: true, label: "Get plans belonging to this group", dynamic: 'groupList.id.displayName'},
         {key: 'Plan', required: true, label: "Get Tasks belonging to this Plan", dynamic: 'planList.id.title'},
-        { key: 'Title', required: false, type: 'string' },
-        { key: 'Description', required: false, type: 'string' }
+        {key: 'Title', required: false, type: 'string' },
+        {key: 'Description', required: false, type: 'string' }
       ],
       perform: searchTask,
       

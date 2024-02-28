@@ -1,27 +1,28 @@
+const {requestWithAccessToken} = require('../util/withAccessToken');
+const {findGroup} = require("../util/findGroup")
+
 // get a list of plans
-const listPlans = (z, bundle) => {
-  const responsePromise = z.request({
-    url: `https://graph.microsoft.com/v1.0/groups/${bundle.inputData.Group}/planner/plans`,
-  });
-  
-  return responsePromise
+const listPlans = (z, bundle, groupId) =>
+  requestWithAccessToken({url: `https://graph.microsoft.com/v1.0/groups/${groupId ?? bundle.inputData.Group }/planner/plans`}, z, bundle)
     .then(response => JSON.parse(response.content).value);
-};
+
 
 // create a plan
-const createPlan = (z, bundle) => {
-
-  const responsePromise = z.request({
+const createPlan = async (z, bundle) => 
+  requestWithAccessToken({
     method: 'POST',
     url: 'https://graph.microsoft.com/v1.0/planner/plans',
     body: {
-      title: bundle.inputData.name, // json by default
-      owner: bundle.inputData.Group
+      title: bundle.inputData.name,
+      container:{
+        containerId: (await findGroup(z, bundle, bundle.inputData.Group)).id,
+        type: "group"
+        
+      }
     }
-  });
-  return responsePromise
-    .then(response => JSON.parse(response.content));
-};
+  }, z, bundle)
+  .then(response => JSON.parse(response.content));
+
 
 module.exports = {
   key: 'plan',
@@ -52,7 +53,7 @@ module.exports = {
       ],
       perform: createPlan
     },
-  },
-
+  }
+  
   
 };
